@@ -1,6 +1,8 @@
 import type { Agent, FoodPair, StrategyTag } from './types';
 import {
-  WORLD_W, WORLD_H, FOOD_RADIUS,
+  WORLD_W, WORLD_H,
+  VILLAGE_CENTER_X, VILLAGE_CENTER_Y,
+  VILLAGE_INNER_RING_RADIUS,
   PAYOFFS, SURVIVAL_TABLE, MAX_POPULATION,
 } from './constants';
 
@@ -9,14 +11,18 @@ let _nextId = 0;
 const uid = () => `${++_nextId}`;
 
 // ─── Food Spawning ────────────────────────────────────────────────────────────
-export function spawnFood(count: number): FoodPair[] {
+export function spawnFood(count: number, villagerCount: number): FoodPair[] {
   const pairs: FoodPair[] = [];
-  const margin = FOOD_RADIUS * 3;
+  const outerRadius = getVillageOuterRadius(villagerCount);
+  const foodRadius = outerRadius * 0.6;
   for (let i = 0; i < count; i++) {
+    // Uniform random in disk: radius uses sqrt(u) to avoid center clustering.
+    const theta = Math.random() * Math.PI * 2;
+    const r = Math.sqrt(Math.random()) * foodRadius;
     pairs.push({
       id: uid(),
-      x: margin + Math.random() * (WORLD_W - margin * 2),
-      y: margin + Math.random() * (WORLD_H - margin * 2),
+      x: VILLAGE_CENTER_X + Math.cos(theta) * r,
+      y: VILLAGE_CENTER_Y + Math.sin(theta) * r,
       assignedAgentIds: [],
       resolved: false,
     });
@@ -31,11 +37,14 @@ export function createAgent(
   x?: number,
   y?: number,
 ): Agent {
-  const margin = 20;
+  const px = x ?? VILLAGE_CENTER_X;
+  const py = y ?? VILLAGE_CENTER_Y;
   return {
     id: uid(),
-    x: x ?? margin + Math.random() * (WORLD_W - margin * 2),
-    y: y ?? margin + Math.random() * (WORLD_H - margin * 2),
+    x: px,
+    y: py,
+    homeX: px,
+    homeY: py,
     strategies: [strategy],
     speed,
     food: 0,
@@ -160,11 +169,15 @@ export function resolveEncounters(agents: Agent[], foodPairs: FoodPair[]): void 
 }
 
 // ─── Survival & Reproduction ──────────────────────────────────────────────────
+/** Speed mutation factor per generation (±10%). */
+const SPEED_MUTATION = 0.10;
+
 /**
  * Returns the survivors + any new offspring.
+ * Offspring inherit parent speed with ±SPEED_MUTATION random variation.
  * Agents with food values outside the table are clamped to nearest key.
  */
-export function evaluateSurvival(agents: Agent[], agentSpeed: number): Agent[] {
+export function evaluateSurvival(agents: Agent[]): Agent[] {
   const survivors: Agent[] = [];
   const offspring: Agent[] = [];
 
@@ -182,12 +195,13 @@ export function evaluateSurvival(agents: Agent[], agentSpeed: number): Agent[] {
     if (survivors.length + offspring.length < MAX_POPULATION) {
       const reproduces = Math.random() < row.reproduce;
       if (reproduces) {
+        const mutation = 1 + (Math.random() * 2 - 1) * SPEED_MUTATION;
+        const childSpeed = Math.max(20, Math.min(400, agent.speed * mutation));
         const child = createAgent(
           agent.strategies[0],
-          agentSpeed,
-          // Spawn near parent
-          clamp(agent.x + (Math.random() - 0.5) * 40, 10, WORLD_W - 10),
-          clamp(agent.y + (Math.random() - 0.5) * 40, 10, WORLD_H - 10),
+          childSpeed,
+          agent.x,
+          agent.y,
         );
         offspring.push(child);
       }
@@ -195,6 +209,44 @@ export function evaluateSurvival(agents: Agent[], agentSpeed: number): Agent[] {
   }
 
   return [...survivors, ...offspring];
+}
+
+// ─── Village Home Layout ─────────────────────────────────────────────────────
+/**
+ * Places all homes on one ring centered on the village core.
+ * As population increases, the ring radius expands instead of creating
+ * additional rings.
+ */
+export function layoutVillageHomes(agents: Agent[], snapAgentsToHomes = false): void {
+  if (agents.length === 0) return;
+
+  // Stable order keeps homes from shuffling every day.
+  const ordered = [...agents].sort((a, b) => Number(a.id) - Number(b.id));
+  const radius = getVillageOuterRadius(ordered.length);
+
+  for (let i = 0; i < ordered.length; i++) {
+    const a = ordered[i];
+    const angle = (Math.PI * 2 * i) / ordered.length;
+    const hx = clamp(VILLAGE_CENTER_X + Math.cos(angle) * radius, 12, WORLD_W - 12);
+    const hy = clamp(VILLAGE_CENTER_Y + Math.sin(angle) * radius, 12, WORLD_H - 12);
+    a.homeX = hx;
+    a.homeY = hy;
+    if (snapAgentsToHomes) {
+      a.x = hx;
+      a.y = hy;
+    }
+  }
+}
+
+export function getVillageOuterRadius(villagerCount: number): number {
+  const spacing = 30;
+  const requiredRadius = (Math.max(villagerCount, 1) * spacing) / (2 * Math.PI);
+  const maxRadius = Math.min(WORLD_W, WORLD_H) / 2 - 16;
+  return clamp(
+    Math.max(VILLAGE_INNER_RING_RADIUS, requiredRadius),
+    VILLAGE_INNER_RING_RADIUS,
+    maxRadius,
+  );
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

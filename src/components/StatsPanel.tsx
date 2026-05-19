@@ -14,19 +14,19 @@ export default function StatsPanel({ renderState }: Props) {
 
   return (
     <div className="grid grid-cols-2 gap-2">
-      <StatCard label="Day" value={String(day)} accent="text-violet-400" />
-      <StatCard label="Population" value={String(total)} accent="text-white" />
+      <StatCard label="Day" value={String(day)} accent="text-[#4f7972]" />
+      <StatCard label="Population" value={String(total)} accent="text-[#2e241c]" />
       <StatCard
         label="Hawks"
         value={`${hawks}`}
         sub={`${hawkPct}%`}
-        accent="text-red-400"
+        accent="text-[#9a3f3a]"
       />
       <StatCard
         label="Doves"
         value={`${doves}`}
         sub={`${dovePct}%`}
-        accent="text-blue-400"
+        accent="text-[#3f7a74]"
       />
       <div className="col-span-2">
         <PhaseBar phase={phase} />
@@ -44,23 +44,24 @@ function StatCard({
   accent: string;
 }) {
   return (
-    <div className="bg-slate-800/60 rounded-lg px-3 py-2 border border-white/5">
-      <p className="text-xs text-slate-500 uppercase tracking-wider leading-none mb-1">{label}</p>
+    <div className="rounded-lg px-3 py-2 border border-[#cabfb2] bg-[rgba(255,252,247,0.88)]">
+      <p className="text-xs text-[#7e7064] uppercase tracking-[0.12em] leading-none mb-1">{label}</p>
       <p className={`text-xl font-bold leading-none ${accent}`}>
         {value}
-        {sub && <span className="text-xs font-normal text-slate-400 ml-1">{sub}</span>}
+        {sub && <span className="text-xs font-normal text-[#7e7064] ml-1">{sub}</span>}
       </p>
     </div>
   );
 }
 
 function PhaseBar({ phase }: { phase: string }) {
-  const phases = ['idle', 'spawning', 'foraging', 'resolution', 'evolving'] as const;
+  const phases = ['idle', 'spawning', 'foraging', 'resolution', 'returning', 'evolving'] as const;
   const labels: Record<string, string> = {
     idle: 'Idle',
     spawning: 'Spawn',
     foraging: 'Forage',
     resolution: 'Resolve',
+    returning: 'Return',
     evolving: 'Evolve',
   };
 
@@ -69,10 +70,10 @@ function PhaseBar({ phase }: { phase: string }) {
       {phases.map(p => (
         <div
           key={p}
-          className={`flex-1 text-center text-[9px] font-semibold py-1 rounded transition-colors ${
+          className={`flex-1 text-center text-[9px] font-semibold py-1 rounded transition-colors uppercase tracking-[0.08em] ${
             phase === p
-              ? 'bg-violet-600 text-white'
-              : 'bg-slate-800 text-slate-600'
+              ? 'bg-[#8d433f] text-[#fbf8f2]'
+              : 'bg-[rgba(241,233,223,0.9)] text-[#8b7f73]'
           }`}
         >
           {labels[p]}

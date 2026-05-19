@@ -3,6 +3,10 @@ import type { SimConfig } from './types';
 // ─── World ────────────────────────────────────────────────────────────────────
 export const WORLD_W = 800;
 export const WORLD_H = 560;
+export const VILLAGE_CENTER_X = WORLD_W / 2;
+export const VILLAGE_CENTER_Y = WORLD_H / 2;
+export const VILLAGE_INNER_RING_RADIUS = 140;
+export const VILLAGE_RING_STEP = 52;
 
 // Agent visual radius (canvas pixels)
 export const AGENT_RADIUS = 9;
@@ -40,18 +44,20 @@ export const SURVIVAL_TABLE: Record<number, { survive: number; reproduce: number
 
 // ─── Default Config ───────────────────────────────────────────────────────────
 export const DEFAULT_CONFIG: SimConfig = {
-  initialHawks:       10,
-  initialDoves:       10,
-  foodPairsOverride:  null,  // auto = floor(population / 2)
-  agentSpeed:         120,   // px/s at 1× speed
-  simSpeed:           1,
-  turbo:              false,
+  strategyGroups: [
+    { strategy: 'hawk', count: 10, speedMin: 80, speedMax: 160 },
+    { strategy: 'dove', count: 10, speedMin: 80, speedMax: 160 },
+  ],
+  foodPairsOverride: null,   // auto = floor(population / 2)
+  simSpeed:          1,
+  turbo:             false,
 };
 
 // ─── Animation Durations (ms at 1× speed) ────────────────────────────────────
 export const PHASE_DURATIONS = {
   spawning:   300,
   resolution: 500,
+  returning:  650,
   evolving:   400,
 } as const;
 

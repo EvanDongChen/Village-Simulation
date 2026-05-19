@@ -2,6 +2,18 @@
 // Extend this union to add new behaviours without touching engine logic.
 export type StrategyTag = 'hawk' | 'dove';
 
+// ─── Strategy Group ───────────────────────────────────────────────────────────
+/** One user-declared cohort of agents sharing a strategy and speed range. */
+export interface StrategyGroupConfig {
+  strategy: StrategyTag;
+  /** Number of agents to spawn at start. */
+  count: number;
+  /** Minimum random speed (px/s) drawn at spawn. Inherited by offspring ±mutation. */
+  speedMin: number;
+  /** Maximum random speed (px/s) drawn at spawn. */
+  speedMax: number;
+}
+
 // ─── Agent ───────────────────────────────────────────────────────────────────
 export interface Agent {
   id: string;
@@ -9,6 +21,10 @@ export interface Agent {
   x: number;
   /** World-space Y position (0 – WORLD_H) */
   y: number;
+  /** Home position in the village ring layout */
+  homeX: number;
+  /** Home position in the village ring layout */
+  homeY: number;
   /** Ordered list of strategy tags; strategies[0] is the primary behaviour */
   strategies: StrategyTag[];
   /** Units per second – determines arrival priority at food pairs */
@@ -35,8 +51,14 @@ export interface FoodPair {
 export interface DayRecord {
   day: number;
   total: number;
-  hawks: number;
-  doves: number;
+  /** Per-strategy head counts. */
+  counts: Partial<Record<StrategyTag, number>>;
+  /** Per-strategy mean speed this day. */
+  avgSpeeds: Partial<Record<StrategyTag, number>>;
+  /** Per-strategy minimum speed this day. */
+  minSpeeds: Partial<Record<StrategyTag, number>>;
+  /** Per-strategy maximum speed this day. */
+  maxSpeeds: Partial<Record<StrategyTag, number>>;
 }
 
 // ─── Phase Machine ───────────────────────────────────────────────────────────
@@ -45,16 +67,15 @@ export type SimPhase =
   | 'spawning'    // food pairs appear
   | 'foraging'    // agents animate toward food
   | 'resolution'  // payoffs flash, brief pause
+  | 'returning'   // agents animate back to home rings
   | 'evolving';   // dead agents fade, offspring appear
 
 // ─── Simulation Config (user-configurable) ───────────────────────────────────
 export interface SimConfig {
-  initialHawks: number;
-  initialDoves: number;
-  /** Food pairs spawned per day (0 = auto: floor(population/2)) */
+  /** One or more strategy groups spawned at start. */
+  strategyGroups: StrategyGroupConfig[];
+  /** Food pairs spawned per day (null = auto: floor(population/2)) */
   foodPairsOverride: number | null;
-  /** Base movement speed for all agents (pixels/second at 1× sim speed) */
-  agentSpeed: number;
   /** Animation speed multiplier 0.5 – 20 */
   simSpeed: number;
   /** Skip all animation, resolve days as fast as possible */

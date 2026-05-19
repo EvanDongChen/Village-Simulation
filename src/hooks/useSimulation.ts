@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Agent, FoodPair, SimConfig, SimulationState } from '../simulation/types';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { Agent, DayRecord, FoodPair, SimConfig, SimulationState, StrategyTag } from '../simulation/types';
 import { DEFAULT_CONFIG, PHASE_DURATIONS } from '../simulation/constants';
 import {
   createAgent,
@@ -7,6 +7,7 @@ import {
   assignFood,
   resolveEncounters,
   evaluateSurvival,
+  layoutVillageHomes,
 } from '../simulation/engine';
 
 // ─── Interpolated render positions ────────────────────────────────────────────
@@ -14,7 +15,10 @@ export interface RenderAgent {
   id: string;
   x: number;
   y: number;
+  homeX: number;
+  homeY: number;
   strategies: Agent['strategies'];
+  speed: number;
   food: number;
   alive: boolean;
   // 0–1: how far along the day's move this agent is
@@ -34,11 +38,37 @@ export interface RenderState {
 // ─── Build initial agent list ─────────────────────────────────────────────────
 function buildInitialAgents(cfg: SimConfig): Agent[] {
   const agents: Agent[] = [];
-  for (let i = 0; i < cfg.initialHawks; i++)
-    agents.push(createAgent('hawk', cfg.agentSpeed));
-  for (let i = 0; i < cfg.initialDoves; i++)
-    agents.push(createAgent('dove', cfg.agentSpeed));
+  for (const group of cfg.strategyGroups) {
+    for (let i = 0; i < group.count; i++) {
+      const speed = group.speedMin + Math.random() * (group.speedMax - group.speedMin);
+      agents.push(createAgent(group.strategy, speed));
+    }
+  }
+  layoutVillageHomes(agents, true);
   return agents;
+}
+
+// ─── Build a DayRecord from a live agent list ─────────────────────────────────
+function buildDayRecord(day: number, agents: Agent[]): DayRecord {
+  const counts: Partial<Record<StrategyTag, number>> = {};
+  const speedSums: Partial<Record<StrategyTag, number>> = {};
+  const minSpeeds: Partial<Record<StrategyTag, number>> = {};
+  const maxSpeeds: Partial<Record<StrategyTag, number>> = {};
+
+  for (const a of agents) {
+    const s = a.strategies[0];
+    counts[s]    = (counts[s]    ?? 0) + 1;
+    speedSums[s] = (speedSums[s] ?? 0) + a.speed;
+    minSpeeds[s] = Math.min(minSpeeds[s] ?? Infinity, a.speed);
+    maxSpeeds[s] = Math.max(maxSpeeds[s] ?? -Infinity, a.speed);
+  }
+
+  const avgSpeeds: Partial<Record<StrategyTag, number>> = {};
+  for (const s of Object.keys(counts) as StrategyTag[]) {
+    avgSpeeds[s] = speedSums[s]! / counts[s]!;
+  }
+
+  return { day, total: agents.length, counts, avgSpeeds, minSpeeds, maxSpeeds };
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -86,7 +116,7 @@ export function useSimulation() {
       agents: s.agents.map(a => ({
         ...a,
         moveProgress: 0,
-      })),
+      } satisfies RenderAgent)),
       foodPairs: s.foodPairs,
       day: s.day,
       phase: s.phase,
@@ -97,6 +127,25 @@ export function useSimulation() {
     }));
   }, []);
 
+  // Stable string that changes only when strategy group data changes.
+  const strategyGroupsKey = useMemo(
+    () => JSON.stringify(config.strategyGroups),
+    [config.strategyGroups],
+  );
+
+  // Before first start, reflect strategy group changes immediately.
+  useEffect(() => {
+    const s = stateRef.current;
+    if (s.running) return;
+    if (s.day !== 0 || s.history.length !== 0) return;
+
+    s.agents = buildInitialAgents(configRef.current);
+    s.foodPairs = [];
+    s.phase = 'idle';
+    pushRender();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [strategyGroupsKey, pushRender]);
+
   // ─── Run one complete day (used in turbo mode) ────────────────────────────
   const runOneDayInstant = useCallback(() => {
     const s = stateRef.current;
@@ -106,20 +155,23 @@ export function useSimulation() {
 
     // Food pairs
     const foodCount = cfg.foodPairsOverride ?? Math.max(1, Math.floor(s.agents.length / 2));
-    s.foodPairs = spawnFood(foodCount);
+    s.foodPairs = spawnFood(foodCount, s.agents.length);
 
     // Assign + resolve
+    for (const a of s.agents) {
+      a.x = a.homeX;
+      a.y = a.homeY;
+    }
     assignFood(s.agents, s.foodPairs);
     resolveEncounters(s.agents, s.foodPairs);
 
     // Survival
-    const nextGen = evaluateSurvival(s.agents, cfg.agentSpeed);
+    const nextGen = evaluateSurvival(s.agents);
+    layoutVillageHomes(nextGen, true);
     s.agents = nextGen;
 
     // Record history
-    const hawks = nextGen.filter(a => a.strategies[0] === 'hawk').length;
-    const doves = nextGen.filter(a => a.strategies[0] === 'dove').length;
-    s.history = [...s.history, { day: s.day, total: nextGen.length, hawks, doves }];
+    s.history = [...s.history, buildDayRecord(s.day, nextGen)];
 
     // Stop if population extinct
     if (nextGen.length === 0) s.running = false;
@@ -154,8 +206,13 @@ export function useSimulation() {
       case 'idle': {
         // Kick off a new day
         s.day += 1;
+        // Every day starts from each villager's home.
+        for (const a of s.agents) {
+          a.x = a.homeX;
+          a.y = a.homeY;
+        }
         const foodCount = cfg.foodPairsOverride ?? Math.max(1, Math.floor(s.agents.length / 2));
-        s.foodPairs = spawnFood(foodCount);
+        s.foodPairs = spawnFood(foodCount, s.agents.length);
         // Reset food counters
         for (const a of s.agents) a.food = 0;
         s.phase = 'spawning';
@@ -245,14 +302,76 @@ export function useSimulation() {
       case 'resolution': {
         const duration = PHASE_DURATIONS.resolution / cfg.simSpeed;
         if (elapsed >= duration) {
-          const nextGen = evaluateSurvival(s.agents, cfg.agentSpeed);
+          // Prepare return trip back to homes.
+          startPositions.current.clear();
+          targetPositions.current.clear();
+          for (const a of s.agents) {
+            startPositions.current.set(a.id, { x: a.x, y: a.y });
+            targetPositions.current.set(a.id, { x: a.homeX, y: a.homeY });
+          }
+
+          s.phase = 'returning';
+          phaseStartRef.current = timestamp;
+        }
+        pushRender();
+        break;
+      }
+
+      case 'returning': {
+        let allDone = true;
+
+        const renderAgents: RenderAgent[] = s.agents.map(agent => {
+          const start = startPositions.current.get(agent.id);
+          const target = targetPositions.current.get(agent.id);
+
+          if (!start || !target) {
+            return { ...agent, moveProgress: 1 };
+          }
+
+          const d = Math.hypot(target.x - start.x, target.y - start.y);
+          if (d < 0.5) {
+            return { ...agent, x: target.x, y: target.y, moveProgress: 1 };
+          }
+
+          // Keep return trip visible at high speed multipliers.
+          const moveDurationMs = Math.max(
+            PHASE_DURATIONS.returning / cfg.simSpeed,
+            ((d / agent.speed) * 1000) / cfg.simSpeed,
+          );
+          const t = Math.min(elapsed / moveDurationMs, 1);
+          const easedT = easeInOut(t);
+
+          if (t < 1) allDone = false;
+
+          return {
+            ...agent,
+            x: start.x + (target.x - start.x) * easedT,
+            y: start.y + (target.y - start.y) * easedT,
+            moveProgress: t,
+          };
+        });
+
+        setRenderState(prev => ({
+          ...prev,
+          agents: renderAgents,
+          foodPairs: s.foodPairs,
+          day: s.day,
+          phase: s.phase,
+          running: s.running,
+          config: cfg,
+        }));
+
+        if (allDone) {
+          for (const a of s.agents) {
+            const t = targetPositions.current.get(a.id);
+            if (t) { a.x = t.x; a.y = t.y; }
+          }
+
+          const nextGen = evaluateSurvival(s.agents);
+          layoutVillageHomes(nextGen, true);
           s.agents = nextGen;
 
-          const hawks = nextGen.filter(a => a.strategies[0] === 'hawk').length;
-          const doves = nextGen.filter(a => a.strategies[0] === 'dove').length;
-          s.history = [...s.history, {
-            day: s.day, total: nextGen.length, hawks, doves,
-          }];
+          s.history = [...s.history, buildDayRecord(s.day, nextGen)];
 
           if (nextGen.length === 0) {
             s.running = false;
@@ -262,7 +381,6 @@ export function useSimulation() {
             phaseStartRef.current = timestamp;
           }
         }
-        pushRender();
         break;
       }
 

@@ -1,20 +1,27 @@
 import { useEffect, useRef } from 'react';
 import type { RenderState } from '../hooks/useSimulation';
-import { WORLD_W, WORLD_H, AGENT_RADIUS, FOOD_RADIUS } from '../simulation/constants';
+import {
+  WORLD_W,
+  WORLD_H,
+  AGENT_RADIUS,
+  FOOD_RADIUS,
+  VILLAGE_CENTER_X,
+  VILLAGE_CENTER_Y,
+} from '../simulation/constants';
 
 interface Props {
   renderState: RenderState;
 }
 
 // Colours
-const HAWK_FILL   = '#ef4444'; // red-500
-const HAWK_STROKE = '#fca5a5'; // red-300
-const DOVE_FILL   = '#3b82f6'; // blue-500
-const DOVE_STROKE = '#93c5fd'; // blue-300
-const FOOD_FILL   = '#facc15'; // yellow-400
-const FOOD_GLOW   = 'rgba(250,204,21,0.35)';
-const GRID_COLOR  = 'rgba(255,255,255,0.04)';
-const BG_COLOR    = '#0f1117';
+const HAWK_FILL = '#9a3f3a';
+const HAWK_STROKE = '#bc766f';
+const DOVE_FILL = '#3f7a74';
+const DOVE_STROKE = '#78a9a3';
+const FOOD_FILL = '#d5b483';
+const FOOD_GLOW = 'rgba(213,180,131,0.18)';
+const GRID_COLOR = 'rgba(90,74,57,0.12)';
+const BG_COLOR = '#f3ece2';
 
 export default function SimulationCanvas({ renderState }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -80,12 +87,33 @@ export default function SimulationCanvas({ renderState }: Props) {
       drawFood(ctx, fp.x + 4, fp.y, FOOD_RADIUS);
     }
 
+    // ── Village homes (concentric rings) ────────────────────────────────────
+    for (const agent of agents) {
+      if (!agent.alive) continue;
+      drawHouse(ctx, agent.homeX, agent.homeY);
+    }
+
+    // Center hub marker where food spawns
+    ctx.save();
+    ctx.strokeStyle = 'rgba(138, 106, 66, 0.45)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(VILLAGE_CENTER_X, VILLAGE_CENTER_Y, 34, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(138, 106, 66, 0.14)';
+    ctx.beginPath();
+    ctx.arc(VILLAGE_CENTER_X, VILLAGE_CENTER_Y, 18, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
     // ── Agents ────────────────────────────────────────────────────────────────
     for (const agent of agents) {
       if (!agent.alive) continue;
       const isHawk = agent.strategies[0] === 'hawk';
       const fill   = isHawk ? HAWK_FILL   : DOVE_FILL;
       const stroke = isHawk ? HAWK_STROKE : DOVE_STROKE;
+      // Dot radius scales slightly with speed (range ~20–400 px/s → 6–13 px)
+      const r = Math.max(6, Math.min(13, 6 + agent.speed / 28));
 
       // Resolution flash: pulse brightness when phase = resolution
       let alpha = 1;
@@ -96,12 +124,12 @@ export default function SimulationCanvas({ renderState }: Props) {
       ctx.save();
       ctx.globalAlpha = alpha;
 
-      // Drop shadow / glow
+      // Keep a very soft edge without a strong glow.
       ctx.shadowColor = fill;
-      ctx.shadowBlur = 8;
+      ctx.shadowBlur = 2;
 
       ctx.beginPath();
-      ctx.arc(agent.x, agent.y, AGENT_RADIUS, 0, Math.PI * 2);
+      ctx.arc(agent.x, agent.y, r, 0, Math.PI * 2);
       ctx.fillStyle = fill;
       ctx.fill();
 
@@ -111,8 +139,8 @@ export default function SimulationCanvas({ renderState }: Props) {
       ctx.stroke();
 
       // Strategy icon: H / D
-      ctx.fillStyle = '#fff';
-      ctx.font = `bold ${AGENT_RADIUS}px system-ui`;
+      ctx.fillStyle = '#fffdf9';
+      ctx.font = `bold ${Math.round(r)}px system-ui`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(isHawk ? 'H' : 'D', agent.x, agent.y + 0.5);
@@ -121,7 +149,7 @@ export default function SimulationCanvas({ renderState }: Props) {
     }
 
     // ── Phase label (top-left) ─────────────────────────────────────────────
-    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.fillStyle = 'rgba(66,52,40,0.62)';
     ctx.font = '12px system-ui';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
@@ -132,7 +160,7 @@ export default function SimulationCanvas({ renderState }: Props) {
   return (
     <div
       ref={containerRef}
-      className="relative rounded-xl overflow-hidden border border-white/10 shadow-2xl"
+      className="relative rounded-xl overflow-hidden border border-[#cdbfae] shadow-[0_6px_16px_rgba(70,55,39,0.16)]"
       style={{ width: WORLD_W, height: WORLD_H, flexShrink: 0 }}
     >
       <canvas ref={canvasRef} />
@@ -146,7 +174,26 @@ function drawFood(ctx: CanvasRenderingContext2D, x: number, y: number, r: number
   ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fillStyle = FOOD_FILL;
   ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+  ctx.strokeStyle = 'rgba(90,74,57,0.3)';
   ctx.lineWidth = 1;
   ctx.stroke();
+}
+
+function drawHouse(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.globalAlpha = 0.75;
+
+  ctx.fillStyle = 'rgba(129, 114, 96, 0.45)';
+  ctx.fillRect(-4, -3, 8, 6);
+
+  ctx.beginPath();
+  ctx.moveTo(-5, -3);
+  ctx.lineTo(0, -7);
+  ctx.lineTo(5, -3);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(106, 93, 78, 0.65)';
+  ctx.fill();
+
+  ctx.restore();
 }

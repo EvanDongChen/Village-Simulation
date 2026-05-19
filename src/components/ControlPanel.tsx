@@ -1,5 +1,7 @@
-import type { SimConfig } from '../simulation/types';
+import type { SimConfig, StrategyGroupConfig, StrategyTag } from '../simulation/types';
 import { MAX_POPULATION } from '../simulation/constants';
+
+const STRATEGY_LABELS: Record<StrategyTag, string> = { hawk: 'Hawk', dove: 'Dove' };
 
 interface Props {
   config: SimConfig;
@@ -24,6 +26,25 @@ export default function ControlPanel({
 }: Props) {
   const autoFood = Math.max(1, Math.floor(population / 2));
 
+  const updateGroup = (idx: number, patch: Partial<StrategyGroupConfig>) => {
+    const next = config.strategyGroups.map((g, i) => i === idx ? { ...g, ...patch } : g);
+    onConfigChange({ strategyGroups: next });
+  };
+
+  const addGroup = () => {
+    onConfigChange({
+      strategyGroups: [
+        ...config.strategyGroups,
+        { strategy: 'dove', count: 5, speedMin: 60, speedMax: 140 },
+      ],
+    });
+  };
+
+  const removeGroup = (idx: number) => {
+    if (config.strategyGroups.length <= 1) return;
+    onConfigChange({ strategyGroups: config.strategyGroups.filter((_, i) => i !== idx) });
+  };
+
   return (
     <div className="flex flex-col gap-4">
       {/* ── Playback controls ─────────────────────────────────────────────── */}
@@ -31,14 +52,14 @@ export default function ControlPanel({
         {!running ? (
           <button
             onClick={onStart}
-            className="flex-1 bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold py-2 px-4 rounded-lg transition-colors"
+            className="flex-1 bg-[#8d433f] hover:bg-[#7f3a36] text-[#fbf8f2] text-sm font-semibold py-2 px-4 rounded-lg transition-colors"
           >
             ▶ Start
           </button>
         ) : (
           <button
             onClick={onPause}
-            className="flex-1 bg-amber-600 hover:bg-amber-500 text-white text-sm font-semibold py-2 px-4 rounded-lg transition-colors"
+            className="flex-1 bg-[#9b7447] hover:bg-[#8d673d] text-[#fbf8f2] text-sm font-semibold py-2 px-4 rounded-lg transition-colors"
           >
             ⏸ Pause
           </button>
@@ -46,13 +67,13 @@ export default function ControlPanel({
         <button
           onClick={onStep}
           disabled={running}
-          className="flex-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-white text-sm font-semibold py-2 px-4 rounded-lg transition-colors"
+          className="flex-1 bg-[#4c756f] hover:bg-[#3f6761] disabled:opacity-40 text-[#fbf8f2] text-sm font-semibold py-2 px-4 rounded-lg transition-colors"
         >
           ⏭ Step
         </button>
         <button
           onClick={onReset}
-          className="flex-1 bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold py-2 px-4 rounded-lg transition-colors"
+          className="flex-1 bg-[#6b6158] hover:bg-[#5d544d] text-[#fbf8f2] text-sm font-semibold py-2 px-4 rounded-lg transition-colors"
         >
           ↺ Reset
         </button>
@@ -60,13 +81,13 @@ export default function ControlPanel({
 
       {/* ── Turbo toggle ──────────────────────────────────────────────────── */}
       <label className="flex items-center justify-between cursor-pointer select-none group">
-        <span className="text-xs font-semibold text-slate-400 group-hover:text-slate-200 transition-colors uppercase tracking-wider">
+        <span className="text-xs font-semibold text-[#6f6256] group-hover:text-[#2e241c] transition-colors uppercase tracking-[0.12em]">
           ⚡ Turbo Mode
         </span>
         <div
           onClick={() => onConfigChange({ turbo: !config.turbo })}
           className={`relative w-11 h-6 rounded-full transition-colors ${
-            config.turbo ? 'bg-violet-600' : 'bg-slate-600'
+            config.turbo ? 'bg-[#8d433f]' : 'bg-[#b0a497]'
           }`}
         >
           <span
@@ -77,7 +98,7 @@ export default function ControlPanel({
         </div>
       </label>
       {config.turbo && (
-        <p className="text-xs text-slate-500 -mt-2">
+        <p className="text-xs text-[#7e7064] -mt-2">
           Animation skipped — days resolve as fast as possible.
         </p>
       )}
@@ -93,37 +114,81 @@ export default function ControlPanel({
         />
       )}
 
-      <div className="border-t border-white/10 pt-3 flex flex-col gap-3">
-        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-          Initial Population
-        </p>
-        <SliderField
-          label="🔴 Hawks"
-          value={config.initialHawks}
-          min={0} max={Math.min(150, MAX_POPULATION)} step={1}
-          format={v => `${v}`}
-          onChange={v => onConfigChange({ initialHawks: v })}
-        />
-        <SliderField
-          label="🔵 Doves"
-          value={config.initialDoves}
-          min={0} max={Math.min(150, MAX_POPULATION)} step={1}
-          format={v => `${v}`}
-          onChange={v => onConfigChange({ initialDoves: v })}
-        />
+      <div className="border-t border-black/8 pt-3 flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold text-[#6f6256] uppercase tracking-[0.12em]">
+            Starting Groups
+          </p>
+          <button
+            onClick={addGroup}
+            className="text-xs text-[#4c756f] hover:text-[#2e241c] font-semibold transition-colors"
+          >
+            + Add group
+          </button>
+        </div>
+
+        {config.strategyGroups.map((g, i) => (
+          <div
+            key={i}
+            className="rounded-lg border border-black/8 bg-[rgba(255,252,247,0.7)] px-3 pt-2 pb-3 flex flex-col gap-2"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <select
+                value={g.strategy}
+                onChange={e => updateGroup(i, { strategy: e.target.value as StrategyTag })}
+                className="text-xs font-semibold rounded-md border border-black/10 bg-transparent px-2 py-1 text-[#2e241c] cursor-pointer"
+              >
+                {(Object.keys(STRATEGY_LABELS) as StrategyTag[]).map(s => (
+                  <option key={s} value={s}>{STRATEGY_LABELS[s]}</option>
+                ))}
+              </select>
+              {config.strategyGroups.length > 1 && (
+                <button
+                  onClick={() => removeGroup(i)}
+                  className="text-xs text-[#9a8d83] hover:text-[#8d433f] transition-colors font-bold leading-none"
+                  title="Remove group"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+
+            <SliderField
+              label="Count"
+              value={g.count}
+              min={0} max={Math.min(150, MAX_POPULATION)} step={1}
+              format={v => String(v)}
+              onChange={v => updateGroup(i, { count: v })}
+            />
+            <SliderField
+              label="Speed min"
+              value={g.speedMin}
+              min={20} max={400} step={5}
+              format={v => `${v} px/s`}
+              onChange={v => updateGroup(i, { speedMin: Math.min(v, g.speedMax) })}
+            />
+            <SliderField
+              label="Speed max"
+              value={g.speedMax}
+              min={20} max={400} step={5}
+              format={v => `${v} px/s`}
+              onChange={v => updateGroup(i, { speedMax: Math.max(v, g.speedMin) })}
+            />
+          </div>
+        ))}
       </div>
 
-      <div className="border-t border-white/10 pt-3 flex flex-col gap-3">
+      <div className="border-t border-black/8 pt-3 flex flex-col gap-3">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+          <p className="text-xs font-semibold text-[#6f6256] uppercase tracking-[0.12em]">
             Food Pairs / Day
           </p>
-          <label className="flex items-center gap-1.5 cursor-pointer text-xs text-slate-400">
+          <label className="flex items-center gap-1.5 cursor-pointer text-xs text-[#7e7064]">
             <input
               type="checkbox"
               checked={config.foodPairsOverride === null}
               onChange={e => onConfigChange({ foodPairsOverride: e.target.checked ? null : autoFood })}
-              className="accent-violet-500 w-3 h-3"
+              className="accent-[#4c756f] w-3 h-3"
             />
             Auto ({autoFood})
           </label>
@@ -156,16 +221,16 @@ function SliderField({
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <div className="flex justify-between text-xs text-slate-400">
+      <div className="flex justify-between text-xs text-[#7e7064]">
         <span>{label}</span>
-        <span className="font-mono text-slate-200">{format(value)}</span>
+        <span className="mono text-[#2e241c]">{format(value)}</span>
       </div>
       <input
         type="range"
         min={min} max={max} step={step}
         value={value}
         onChange={e => onChange(Number(e.target.value))}
-        className="w-full accent-violet-500 h-1.5 rounded-full cursor-pointer"
+        className="w-full accent-[#4c756f] h-1.5 rounded-full cursor-pointer"
       />
     </label>
   );
