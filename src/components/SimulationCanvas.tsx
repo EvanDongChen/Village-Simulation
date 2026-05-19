@@ -3,7 +3,6 @@ import type { RenderState } from '../hooks/useSimulation';
 import {
   WORLD_W,
   WORLD_H,
-  AGENT_RADIUS,
   FOOD_RADIUS,
   VILLAGE_CENTER_X,
   VILLAGE_CENTER_Y,

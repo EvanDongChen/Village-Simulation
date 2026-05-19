@@ -74,9 +74,9 @@ export default function SpeedChart({ history }: Props) {
               fontSize: 12,
             }}
             labelStyle={{ color: '#7e7064' }}
-            formatter={(value: unknown, name: string) => {
-              if (Array.isArray(value)) return [`${value[0]}–${value[1]} px/s`, name];
-              return [`${value} px/s`, name];
+            formatter={(value: unknown, name?: string | number) => {
+              if (Array.isArray(value)) return [`${value[0]}–${value[1]} px/s`, String(name ?? '')];
+              return [`${value} px/s`, String(name ?? '')];
             }}
           />
           <Legend
